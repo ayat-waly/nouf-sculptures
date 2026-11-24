@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تماثيل معرض نوف</title>
+<style>
+@font-face{font-family:Tajawal;src:url(f/tajawal-arabic-500-normal.woff2) format("woff2");font-weight:400 600;font-display:swap}
+@font-face{font-family:Tajawal;src:url(f/tajawal-arabic-800-normal.woff2) format("woff2");font-weight:700 900;font-display:swap}
+/* VOICE: هادئ، متحفي، فخم
+   IDEA: قاعدة عرض في قاعة مظلمة تحت ضوء واحد
+   PICTURE: التمثال نفسه يدور ببطء ويملأ الشاشة
+   COLOUR and TYPE: فحمي دافئ، ضوء كهرماني، ذهبي البطاقات؛ Noto Kufi Arabic
+   LAYOUT: مسرح كامل الشاشة، بطاقة اسم صغيرة أسفله */
+:root{color-scheme:dark;--bg:#14110e;--ink:#f3ebdd;--muted:#b3a58f;--gold:#c9a45c}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:500 17px/1.6 Tajawal,"Segoe UI",Tahoma,sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0;background:radial-gradient(120% 90% at 50% 28%,#3a2f24 0%,#1d1814 48%,#100d0b 100%)}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+.plate{position:fixed;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);text-align:center;width:min(92vw,560px);pointer-events:none}
+.plate h1{margin:0;font-size:clamp(30px,6vw,46px);line-height:1.2;font-weight:800;color:#fff;text-wrap:balance;text-shadow:0 2px 18px #000a}
+.plate p{margin:4px 0 0;color:#e6dccb;font-size:clamp(17px,4vw,21px);text-shadow:0 1px 10px #000c}
+.plate .rule{width:56px;height:2px;background:var(--gold);margin:10px auto 0;border-radius:2px}
+.load{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;transition:opacity .6s}
+.load.done{opacity:0}
+.ring{width:64px;height:64px;border-radius:50%;border:2px solid #ffffff1f;border-top-color:var(--gold);animation:spin 1s linear infinite}
+.load b{display:block;margin-top:14px;font-weight:400;color:var(--muted);font-size:14px;text-align:center}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hint{position:fixed;top:max(16px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:15px;color:var(--muted);background:#0007;border:1px solid #ffffff14;border-radius:30px;padding:6px 14px;transition:opacity 1s;white-space:nowrap}
+.btn{position:fixed;top:max(14px,env(safe-area-inset-top));inset-inline-start:14px;width:44px;height:44px;border-radius:50%;border:1px solid #ffffff22;background:#0008;color:var(--ink);font:inherit;font-size:18px;cursor:pointer;display:grid;place-items:center}
+.btn:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.err{position:fixed;inset:0;display:none;place-items:center;text-align:center;padding:24px;color:var(--muted)}
+/* الفهرس */
+#index{display:none;height:100%;overflow:auto;padding:clamp(28px,5vw,64px) max(5vw,16px)}
+#index h2{margin:0 0 6px;font-size:clamp(28px,5vw,40px);line-height:1.1}
+#index>p{margin:0 0 24px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:12px;max-width:1240px}
+.card{border:1px solid #ffffff1a;border-radius:14px;padding:16px;background:#ffffff08;display:flex;flex-direction:column;gap:4px}
+.card a{color:var(--ink);text-decoration:none;font-weight:600;font-size:18px}
+.card a:hover{color:var(--gold)}
+.card small{color:var(--muted);font-size:13px}
+.card button{margin-top:8px;align-self:flex-start;min-height:40px;border-radius:9px;border:1px solid #ffffff26;background:transparent;color:var(--ink);font:inherit;font-size:13px;padding:0 14px;cursor:pointer}
+@media (prefers-reduced-motion:reduce){.ring{animation:none}}
+</style>
+</head>
+<body>
+<div id="viewer" style="display:none">
+  <div id="stage"></div>
+  <div class="load" id="load"><div><div class="ring" style="margin:auto"></div><b id="pct">جارٍ التحميل…</b></div></div>
+  <div class="hint" id="hint">اسحب للتدوير · قرّب بإصبعين أو العجلة</div>
+  <button class="btn" id="pause" aria-label="إيقاف الدوران">❚❚</button>
+  <div class="plate"><h1 id="t"></h1><p id="s"></p><div class="rule"></div></div>
+  <div class="err" id="err"></div>
+</div>
+<div id="index"><h2>تماثيل معرض نوف الرقمي</h2><p>رابط لكل تمثال يعرضه وهو يدور.</p><div class="grid" id="grid"></div></div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+{
+const W = [
+  ['s01','الخطب العظيم','جواد بوشهري','1992'],
+  ['s02','أم وطفلها','سامي محمد','1973'],
+  ['s03','رقصة الهبان','خزعل القفاص','1978'],
+  ['s04','امرأة','عبدالحميد إسماعيل','1985'],
+  ['s05','امرأة 2','عبدالحميد إسماعيل','1985'],
+  ['s06','العقدة 2','سامي محمد',''],
+  ['s07','العقدة 1','سامي محمد',''],
+  ['s08','الأمومة','عيسى صقر','1976'],
+  ['s09','الفتاة','عيسى صقر',''],
+];
+const $ = id => document.getElementById(id);
+const sub = w => w[2] + ' · خشب' + (w[3] ? ' · ' + w[3] : '');
+
+function showIndex() {
+  $('index').style.display = 'block'; $('viewer').style.display = 'none';
+  const g = $('grid'); g.textContent = '';
+  for (const w of W) {
+    const c = document.createElement('div'); c.className = 'card';
+    const a = document.createElement('a'); a.href = '#' + w[0]; a.textContent = w[1];
+    const s = document.createElement('small'); s.textContent = w[0].toUpperCase() + ' · ' + sub(w);
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = 'نسخ الرابط';
+    b.addEventListener('click', async () => {
+      const url = location.href.split('#')[0] + '#' + w[0];
+      try { await navigator.clipboard.writeText(url); b.textContent = 'تم النسخ ✓'; }
+      catch { b.textContent = url; }
+    });
+    c.append(a, s, b); g.append(c);
+  }
+}
+
+let started = false;
+function showViewer(w) {
+  if (started) { location.reload(); return; }
+  started = true;
+  $('index').style.display = 'none'; $('viewer').style.display = 'block';
+  document.title = w[1] + ' — معرض نوف';
+  $('t').textContent = w[1]; $('s').textContent = sub(w);
+
+  const stage = $('stage');
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.0;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+  stage.append(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.8;
+  const key = new THREE.DirectionalLight(0xffffff, 1.1);
+  key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004;
+  scene.add(key, key.target);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 0.9));
+
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.01, 100);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.enablePan = false;
+  controls.minPolarAngle = 0.35; controls.maxPolarAngle = Math.PI / 2 - 0.04;
+
+  const pivot = new THREE.Group(); scene.add(pivot);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(1, 64), new THREE.ShadowMaterial({ opacity: 0.35 }));
+  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+  let paused = false, idleUntil = 0;
+  controls.addEventListener('start', () => { idleUntil = Infinity; fadeHint(); });
+  controls.addEventListener('end', () => { idleUntil = performance.now() + 2500; });
+  $('pause').addEventListener('click', () => {
+    paused = !paused; $('pause').textContent = paused ? '▶' : '❚❚';
+    $('pause').setAttribute('aria-label', paused ? 'تشغيل الدوران' : 'إيقاف الدوران');
+  });
+  function fadeHint() { $('hint').style.opacity = 0; }
+  setTimeout(fadeHint, 5000);
+
+  const resize = () => {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  };
+  new ResizeObserver(resize).observe(stage); resize();
+
+  const draco = new DRACOLoader().setDecoderPath('./draco/').setDecoderConfig({ type: 'js' });
+  const loader = new GLTFLoader().setDRACOLoader(draco);
+  const onErr = err => { $('load').classList.add('done'); $('err').style.display = 'grid'; $('err').textContent = 'تعذّر تحميل التمثال. حدّث الصفحة.'; console.error(err); };
+  (async () => {
+    const res = await fetch('./m/' + w[0].toUpperCase() + '.json');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const total = +res.headers.get('content-length') || 0, reader = res.body.getReader(), chunks = []; let got = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); got += value.length;
+      if (total) $('pct').textContent = 'جارٍ التحميل ' + Math.round(got / total * 100) + '%'; }
+    const txt = new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
+    const bin = Uint8Array.from(atob(JSON.parse(txt).glb), ch => ch.charCodeAt(0));
+    return bin.buffer;
+  })().then(buf => loader.parse(buf, './', gltf => {
+    const model = gltf.scene;
+    model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+    model.position.set(-c.x, -box.min.y, -c.z); pivot.add(model);
+    const r = Math.max(size.y, size.x, size.z);
+    floor.scale.setScalar(Math.max(size.x, size.z) * 1.6);
+    const target = new THREE.Vector3(0, size.y * 0.5, 0);
+    const fit = () => {
+      const vFov = THREE.MathUtils.degToRad(camera.fov), hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+      const plateRoom = 1.42; // مساحة لبطاقة الاسم أسفل الشاشة
+      return Math.max((size.y * plateRoom / 2) / Math.tan(vFov / 2), (Math.max(size.x, size.z) * 1.6 / 2) / Math.tan(hFov / 2)) + Math.max(size.x, size.z) / 2;
+    };
+    const d = fit();
+    target.y = size.y * 0.42;
+    camera.position.set(0, size.y * 0.62, d); controls.target.copy(target);
+    controls.minDistance = r * 0.6; controls.maxDistance = d * 2.2;
+    camera.near = r / 100; camera.far = d * 10; camera.updateProjectionMatrix();
+    key.position.set(r * 0.9, size.y * 2.3, r * 1.6); key.target.position.set(0, size.y * 0.4, 0);
+    key.shadow.camera.near = r * 0.1; key.shadow.camera.far = r * 10; Object.assign(key.shadow.camera, { left: -r, right: r, top: r * 1.5, bottom: -r }); key.shadow.camera.updateProjectionMatrix();
+    $('load').classList.add('done');
+    window.__ready = true;
+  }, onErr)).catch(onErr);
+
+  let last = performance.now(); const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const speed = (Math.PI * 2) / 24; // لفة كل 24 ثانية
+  renderer.setAnimationLoop(() => {
+    const now = performance.now(), dt = Math.min((now - last) / 1000, 0.05); last = now;
+    if (!paused && !reduce && performance.now() > idleUntil) pivot.rotation.y += speed * dt;
+    controls.update(); renderer.render(scene, camera);
+  });
+}
+
+const route = () => {
+  const h = location.hash.slice(1).toLowerCase();
+  const w = W.find(x => x[0] === h);
+  if (w) showViewer(w); else if (!started) showIndex(); else location.reload();
+};
+addEventListener('hashchange', route); route();
+}
+</script>
+</body>
+</html>
